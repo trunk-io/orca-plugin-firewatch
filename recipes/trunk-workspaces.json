@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "trunk-workspaces",
+  "name": "Trunk Workspaces",
+  "description": "A Trunk workspace for the repository, with the template from its /blaze mapping. Run `trunk-orca setup` once first.",
+  "checkoutMode": "provisioned-root",
+  "create": "\"$HOME/.config/trunk/orca/bin/trunk-orca\" create",
+  "suspend": "\"$HOME/.config/trunk/orca/bin/trunk-orca\" suspend",
+  "resume": "\"$HOME/.config/trunk/orca/bin/trunk-orca\" resume",
+  "destroy": "\"$HOME/.config/trunk/orca/bin/trunk-orca\" destroy"
+}

@@ -3,6 +3,7 @@ var __defProp = Object.defineProperty;
 var __export = (target, all) => {
   for (var name in all) __defProp(target, name, { get: all[name], enumerable: true });
 };
+import { execFile as execFile2 } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { chmod as chmod2, copyFile, mkdir as mkdir3, writeFile as writeFile3 } from "node:fs/promises";
 import { join as join3, resolve } from "node:path";
@@ -9459,6 +9460,8 @@ var WorkspaceSchema = external_exports.object({ id: external_exports.string().mi
 var ResolvedDefaultsSchema = external_exports.object({ templateId: external_exports.string().nullable(), size: external_exports.string().min(1), region: external_exports.string().min(1), source: external_exports.string().optional() });
 var READY_TIMEOUT_MS = 15 * 6e4;
 var READY_POLL_MS = 3e3;
+var SSH_CHECK_TIMEOUT_MS = 9e4;
+var SSH_CHECK_RETRY_MS = 3e3;
 var CLEANUP_TIMEOUT_MS = 15e3;
 var NAME_LOOKUP_WAITS_MS = [2e3, 4e3, 8e3];
 var TERMINAL = /* @__PURE__ */ new Set(["failed", "deleted"]);
@@ -9564,7 +9567,32 @@ async function connect(workspaceId, certificate, deps, onStopped) {
   if (sshHost === null || sshHost === void 0) {
     throw new Error(`Workspace ${workspaceId} has no SSH host.`);
   }
-  return buildResult({ label: `Trunk ${workspace.name}`, target: deps.target(sshHost, certificate.linuxUsername), projectRoot: workspace.workDirectory ?? `/home/${certificate.linuxUsername}`, workspaceId });
+  const result2 = buildResult({ label: `Trunk ${workspace.name}`, target: deps.target(sshHost, certificate.linuxUsername), projectRoot: workspace.workDirectory ?? `/home/${certificate.linuxUsername}`, workspaceId });
+  await recordHostKey(result2.connection.target, deps);
+  return result2;
+}
+async function recordHostKey(target, deps) {
+  const { host, port, username, identityFile, proxyCommand } = target;
+  if (identityFile === void 0 || proxyCommand === void 0) {
+    throw new Error("The SSH target has no identity file or proxy command.");
+  }
+  const deadline = deps.now() + SSH_CHECK_TIMEOUT_MS;
+  for (; ; ) {
+    deps.signal.throwIfAborted();
+    const check2 = await deps.sshCheck({ host, port, username, identityFile, proxyCommand });
+    if (check2.exitCode === 0) return;
+    const stderr2 = check2.stderr.trim();
+    if (check2.notStarted === true) {
+      throw new Error(`Could not run ssh: ${stderr2}. Orca needs OpenSSH on this computer.`);
+    }
+    if (/Permission denied|REMOTE HOST IDENTIFICATION HAS CHANGED|Host key verification failed/u.test(stderr2)) {
+      throw new Error(`SSH to ${host} failed: ${stderr2}`);
+    }
+    if (deps.now() >= deadline) {
+      throw new Error(`SSH to ${host} did not answer in time${stderr2 === "" ? "." : `: ${stderr2}`}`);
+    }
+    await deps.sleep(SSH_CHECK_RETRY_MS);
+  }
 }
 async function waitUntilReady(workspaceId, deps, onStopped) {
   const deadline = deps.now() + READY_TIMEOUT_MS;
@@ -9638,7 +9666,7 @@ async function dependencies(dir, signal) {
     signal.addEventListener("abort", onAbort, { once: true });
   }), pause: (ms) => new Promise((done) => {
     setTimeout(done, ms);
-  }), now: () => Date.now(), nameSuffix: () => randomBytes(3).toString("hex") };
+  }), now: () => Date.now(), nameSuffix: () => randomBytes(3).toString("hex"), sshCheck: (target) => sshCheck(target, signal) };
 }
 async function withDeadline(dir, path, options, ms) {
   const signal = AbortSignal.timeout(ms);
@@ -9653,6 +9681,18 @@ async function withDeadline(dir, path, options, ms) {
   } finally {
     clearTimeout(timer);
   }
+}
+function sshCheck(target, signal) {
+  const args = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new", "-o", "IdentitiesOnly=yes", "-o", "ConnectTimeout=20", "-o", `ProxyCommand=${target.proxyCommand}`, "-i", target.identityFile, "-p", target.port.toString(), "-l", target.username, "--", target.host, "true"];
+  return new Promise((done) => {
+    execFile2("ssh", args, { timeout: 45e3, signal }, (error51, _stdout, stderr2) => {
+      if (error51 === null) {
+        done({ exitCode: 0, stderr: stderr2 });
+        return;
+      }
+      done({ exitCode: typeof error51.code === "number" ? error51.code : null, notStarted: typeof error51.code === "string" && error51.code !== "ABORT_ERR", stderr: stderr2 === "" ? error51.message : stderr2 });
+    });
+  });
 }
 async function setup(dir, apiBaseUrl) {
   const input = createInterface({ input: stdin, output: stderr });

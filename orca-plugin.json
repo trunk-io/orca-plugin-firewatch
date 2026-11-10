@@ -3,7 +3,7 @@
   "execution": "declarative",
   "id": "trunk-workspaces",
   "name": "Trunk Workspaces",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Run Orca workspaces in Trunk Workspaces cloud sandboxes, with short-lived SSH certificates.",
   "engines": {
     "orca": ">=1.4.245"

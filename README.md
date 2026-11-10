@@ -39,6 +39,8 @@ The SSH key is `~/.config/trunk/ssh/id_ed25519`. The trunk app uses the same key
 - `~/.config/trunk/orca/session.json` (mode `0600`): your sign-in session. Delete it to sign out.
 - `~/.config/trunk/orca/bin/`: the installed adapter.
 - `~/.config/trunk/ssh/`: the SSH key and its current certificate.
+- `~/.ssh/known_hosts`: the host key of each workspace. Before Orca connects, the recipe connects once
+  and records the key. The connection goes through a TLS tunnel that proves the host.
 
 ## Troubleshooting
 
@@ -46,6 +48,9 @@ The SSH key is `~/.config/trunk/ssh/id_ed25519`. The trunk app uses the same key
   turned on SSH certificates. Orca has no other key, so the recipe stops.
 - **"Not signed in" or "The trunk session expired."** Run `setup` again.
 - **`503 repositoryIdUnavailable`.** Trunk could not ask GitHub about the repository. Try again.
+- **"REMOTE HOST IDENTIFICATION HAS CHANGED".** The workspace's host key is not the one in
+  `~/.ssh/known_hosts`. Make sure that you expect this (for example, a workspace was made again with
+  the same host). Then remove the old entry with `ssh-keygen -R '[<host>]:2222'`.
 - **A create that failed.** The recipe deletes the workspace it made. If one stays, delete it in the
   trunk app.
 
